@@ -1,4 +1,5 @@
 <title>El Bodegón</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,340;0,9..144,480;0,9..144,600;0,9..144,720;1,9..144,500;1,9..144,600&family=Libre+Franklin:wght@400;500;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
@@ -64,6 +65,8 @@
   }
 
   a { color: inherit; }
+
+  a[aria-disabled="true"] { pointer-events: none; cursor: default; }
 
   img, svg { max-width: 100%; display: block; }
 
@@ -1042,7 +1045,7 @@
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4M16 2v4M3 10h18M5 6h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"/></svg>
             Reservar mesa
           </a>
-          <a class="btn btn-ghost" href="tel:+59823119019">
+          <a class="btn btn-ghost" aria-disabled="true">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>
             2311 9019
           </a>
@@ -1337,7 +1340,7 @@
               <span class="icon-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92Z"/></svg></span>
               <div>
                 <dt>Teléfono</dt>
-                <dd><a href="tel:+59823119019">2311 9019</a></dd>
+                <dd><a aria-disabled="true">2311 9019</a></dd>
               </div>
             </div>
           </dl>
@@ -1365,9 +1368,9 @@
       <div class="hero-ctas">
         <a class="btn btn-primary" href="https://elbodegonrestaurante.myrestoo.net/es/reservar" target="_blank" rel="noopener">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4M16 2v4M3 10h18M5 6h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"/></svg>
-          Reservar en elbodegonrestaurante.myrestoo.net
+          Reservar mesa
         </a>
-        <a class="btn btn-ghost" href="tel:+59823119019" style="border-color: rgba(248,244,230,0.4); color:#f8f4e6;">
+        <a class="btn btn-ghost" aria-disabled="true" style="border-color: rgba(248,244,230,0.4); color:#f8f4e6;">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>
           2311 9019
         </a>
@@ -1399,7 +1402,7 @@
         <li><a href="#opiniones">Opiniones</a></li>
         <li><a href="#ubicacion">Ubicación</a></li>
         <li><a href="https://www.instagram.com/elbodegonrestaurante/" target="_blank" rel="noopener">Instagram</a></li>
-        <li><a href="tel:+59823119019">2311 9019</a></li>
+        <li><a aria-disabled="true">2311 9019</a></li>
       </ul>
       <a class="btn btn-primary" href="https://elbodegonrestaurante.myrestoo.net/es/reservar" target="_blank" rel="noopener">Reservar mesa</a>
     </div>
