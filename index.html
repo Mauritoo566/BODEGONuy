@@ -33,13 +33,21 @@
     --accent-ink: #141211;
     --stage: #0f0e0d;
     --chip: #26231f;
+    color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #141211; --panel: #1c1a18; --ink: #f1ece6; --muted: #a39b93; --line: #2f2b28;
   --accent: #e08a5f; --accent-ink: #141211; --stage: #0f0e0d; --chip: #26231f;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.modal { position: fixed; inset: 0; background: rgba(20,16,14,.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+.dlg { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 18px; max-width: 360px; width: 100%; display: flex; flex-direction: column; gap: 14px; }
+.dlg p { margin: 0; font-size: 14px; }
+.dlg .row { display: flex; gap: 8px; justify-content: flex-end; }
+.btn:focus-visible, .brush:focus-visible, .seg button:focus-visible, .ib:focus-visible, .ln:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 html, body { margin: 0; height: 100%; }
 body {
   background: var(--bg); color: var(--ink);
@@ -177,10 +185,29 @@ aside.right { border-left: 1px solid var(--line); }
   </aside>
 </div>
 
+<div class="modal" id="modal" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="modalMsg">
+    <p id="modalMsg"></p>
+    <div class="row"><button class="btn" id="mNo">Cancelar</button><button class="btn primary" id="mYes">Confirmar</button></div>
+  </div>
+</div>
+
 <script>
 'use strict';
 const $ = s => document.querySelector(s);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+function ask(msg, yes) {
+  return new Promise(res => {
+    const m = $('#modal');
+    $('#modalMsg').textContent = msg;
+    $('#mYes').textContent = yes || 'Confirmar';
+    m.hidden = false; $('#mYes').focus();
+    const done = v => { m.hidden = true; $('#mYes').onclick = $('#mNo').onclick = null; res(v); };
+    $('#mYes').onclick = () => done(true);
+    $('#mNo').onclick = () => done(false);
+  });
+}
 
 /* ---------------- noise & random ---------------- */
 function hash2(x, y) {
@@ -1085,8 +1112,8 @@ function moveLayer(L, dir) {
   a.splice(i, 1); a.splice(j, 0, L);
   renderLayers(); compose();
 }
-function deleteLayer(L) {
-  if (L.strokes.length && !confirm('¿Eliminar esta capa?')) return;
+async function deleteLayer(L) {
+  if (L.strokes.length && !(await ask('¿Eliminar esta capa y sus trazos?', 'Eliminar'))) return;
   const a = state.layers, i = a.indexOf(L);
   a.splice(i, 1);
   state.history = state.history.filter(id => id !== L.id);
@@ -1118,8 +1145,8 @@ function undo() {
   renderLayers();
 }
 $('#undo').onclick = undo;
-$('#clear').onclick = () => {
-  if (!state.layers.some(L => L.strokes.length) || confirm('¿Borrar todo el dibujo?')) {
+$('#clear').onclick = async () => {
+  if (!state.layers.some(L => L.strokes.length) || await ask('¿Borrar todo el dibujo?', 'Borrar todo')) {
     const id = state.active ? state.active.brush : 'ceramic';
     state.layers = []; state.active = null; state.history = [];
     addLayer(id); compose();
@@ -1182,14 +1209,21 @@ async function exportPNG(withImage) {
     final = document.createElement('canvas'); final.width = x1 - x0 + 1; final.height = y1 - y0 + 1;
     final.getContext('2d').drawImage(out, -x0, -y0);
   }
-  final.toBlob(blob => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'bodegon-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.png';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    toast(`PNG exportado · ${final.width}×${final.height}`);
-  }, 'image/png');
+  const blob = await new Promise(r => final.toBlob(r, 'image/png'));
+  const filename = 'bodegon-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.png';
+  const size = `${final.width}×${final.height}`;
+  const dl = window.claude && window.claude.use ? await window.claude.use('downloads').catch(() => null) : null;
+  if (dl) {
+    try { await dl.save({ filename, data: blob }); toast('PNG exportado · ' + size); }
+    catch (err) { toast(err && err.code === 'declined' ? 'Exportación cancelada' : 'No se pudo guardar el PNG en esta vista'); }
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast('PNG exportado · ' + size);
 }
 $('#export').onclick = () => exportPNG(false);
 $('#exportImg').onclick = () => exportPNG(true);
@@ -1219,10 +1253,10 @@ const TEMPLATES = [
 (function initTemplates() {
   const sel = $('#tpl');
   TEMPLATES.forEach((t, i) => { const o = document.createElement('option'); o.value = i; o.textContent = t.name; sel.appendChild(o); });
-  sel.onchange = () => {
+  sel.onchange = async () => {
     const t = TEMPLATES[sel.value]; sel.value = '';
     if (!t) return;
-    if (state.layers.some(L => L.strokes.length) && !confirm('La plantilla reemplaza el dibujo actual. ¿Continuar?')) return;
+    if (state.layers.some(L => L.strokes.length) && !(await ask('La plantilla reemplaza el dibujo actual.', 'Usar plantilla'))) return;
     const W = state.W, H = state.H, m = Math.min(W, H);
     state.layers = []; state.active = null; state.history = [];
     let last = null;
