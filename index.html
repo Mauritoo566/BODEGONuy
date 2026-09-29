@@ -8,7 +8,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='%23c9744c'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;800&family=Anton&family=Archivo+Black&family=Instrument+Serif:ital@0;1&family=Space+Mono&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;800&family=Anton&family=Archivo+Black&family=Instrument+Serif:ital@0;1&family=Space+Mono&family=Italianno&display=swap">
 <style>
 :root {
   --bg: #fbfaf7;
@@ -263,7 +263,7 @@ const PALETTES = {
   rust:   ['#2a0e05', '#8f3d17', '#e8a06a'],
 };
 const DOME = 0, CONE = 1, SOFT = 2;
-const MAX = 0, ADD = 1, SUB = 2;
+const MAX = 0, ADD = 1, SUB = 2, BODY = 3;
 
 function pickMat(sel, P) {
   if (PALETTES[sel]) return { kind: METAL, pal: PALETTES[sel].map(hex) };
@@ -415,9 +415,11 @@ const BRUSHES = [
   {
     id: 'sand', name: 'Pincel de arena',
     desc: 'Los granos se agrupan en una gota a ritmo lento y se dispersan a ritmo rápido.',
-    d: { width: 30, speed: .9, relief: 1, light: 135, color: '#d8b27a', color2: '#5a3a1c', style: '3d', density: .6, grainSize: 1 },
-    ctl: [O('style', 'Estilo', [['3d', 'Granos con volumen'], ['flat', 'Polvo plano']]), C('color', 'Color'), C('color2', 'Segundo color (polvo)'), R('density', 'Densidad', .05, 1, .01), R('grainSize', 'Tamaño del grano', .4, 3, .05)],
-    layered: () => false, mat: P => ({ kind: SAND, flat: P.style === 'flat', c2: hex(P.color2 || '#5a3a1c') }),
+    d: { width: 30, speed: .9, relief: 1, light: 135, color: '#d8b27a', color2: '#5a3a1c', mix: .5, style: '3d', dist: 'cloud', density: .6, grainSize: 1, body: 0, bodyColor: '#e0702a' },
+    ctl: [O('style', 'Estilo', [['3d', 'Granos con volumen'], ['flat', 'Polvo plano']]), C('color', 'Color'), C('color2', 'Segundo color (polvo)'), R('mix', 'Proporción del segundo color', 0, 1, .01),
+      O('dist', 'Reparto del polvo', [['cloud', 'Nube'], ['even', 'Parejo'], ['edges', 'En los bordes']]), R('density', 'Densidad', .05, 1, .01), R('grainSize', 'Tamaño del grano', .4, 3, .05),
+      R('body', 'Cuerpo de color (polvo)', 0, 1, .01), C('bodyColor', 'Color del cuerpo')],
+    layered: () => false, mat: P => ({ kind: SAND, flat: P.style === 'flat', c2: hex(P.color2 || '#5a3a1c'), mix: P.mix != null ? P.mix : .5, body: P.body || 0, bc: hex(P.bodyColor || '#e0702a') }),
     grains(ctx, x, y, spread, n) {
       for (let k = 0; k < n; k++) {
         const gx = x + (ctx.rng() + ctx.rng() + ctx.rng() - 1.5) / 1.5 * spread;
@@ -426,28 +428,40 @@ const BRUSHES = [
         ctx.dome(gx, gy, gr, gr, DOME, MAX);
       }
     },
-    dust(ctx, x, y, w, spread) {
-      const gs = ctx.S * .9 * ctx.P.grainSize;
-      const n = Math.round(ctx.P.density * w * w * .05 / (gs * gs) + 2);
+    dust(ctx, x, y, w, spread, tx, ty) {
+      const P = ctx.P, rng = ctx.rng, gs = ctx.S * .9 * P.grainSize, R = w / 2;
+      const n = Math.round(P.density * w * w * .05 / (gs * gs) + 2);
+      if (P.body > 0) ctx.dome(x, y, R * 1.1, 1, SOFT, BODY);
       for (let k = 0; k < n; k++) {
-        const gx = x + (ctx.rng() + ctx.rng() + ctx.rng() - 1.5) / 1.5 * spread;
-        const gy = y + (ctx.rng() + ctx.rng() + ctx.rng() - 1.5) / 1.5 * spread;
-        const gr = gs * (.6 + ctx.rng() * .8);
+        let gx, gy;
+        if (P.dist === 'even') {
+          const a = rng() * Math.PI * 2, rr = R * Math.sqrt(rng()) * (.97 + .06 * rng());
+          gx = x + Math.cos(a) * rr; gy = y + Math.sin(a) * rr;
+        } else if (P.dist === 'edges') {
+          const side = rng() < .5 ? -1 : 1, inner = rng() < .2;
+          const o = inner ? (rng() * 2 - 1) * R : side * R * (1 - Math.pow(rng(), 2.5) * .75 + (rng() - .5) * .25);
+          const along = (rng() - .5) * w * .22;
+          gx = x - ty * o + tx * along; gy = y + tx * o + ty * along;
+        } else {
+          gx = x + (rng() + rng() + rng() - 1.5) / 1.5 * spread;
+          gy = y + (rng() + rng() + rng() - 1.5) / 1.5 * spread;
+        }
+        const gr = gs * (.6 + rng() * .8);
         ctx.dome(gx, gy, gr, gr, DOME, MAX);
       }
     },
     seg(ctx, a, b) {
       const flat = ctx.P.style === 'flat';
-      rope(ctx, a, b, .2, (x, y, s) => {
+      rope(ctx, a, b, .2, (x, y, s, tx, ty) => {
         const w = ctx.w(s);
-        if (flat) { this.dust(ctx, x, y, w, w * (.35 + .9 * s)); return; }
+        if (flat) { this.dust(ctx, x, y, w, w * (.35 + .9 * s), tx, ty); return; }
         this.grains(ctx, x, y, w * (.25 + 1.3 * s), Math.round(1 + ctx.P.density * 7));
         if (s < .25) ctx.dome(x, y, w * .45, w * .12 * (.25 - s) / .25, SOFT, ADD, 1);
       }, true);
     },
     dwell(ctx, p) {
       const w = ctx.w(0);
-      if (ctx.P.style === 'flat') { this.dust(ctx, p.x, p.y, w * .5, w * .3); return; }
+      if (ctx.P.style === 'flat') { this.dust(ctx, p.x, p.y, w * .5, w * .3, 1, 0); return; }
       ctx.dome(p.x, p.y, w * .5, w * .06, SOFT, ADD, 1);
       this.grains(ctx, p.x, p.y, w * .35, Math.round(2 + ctx.P.density * 8));
     },
@@ -514,9 +528,9 @@ const BRUSHES = [
   },
   {
     id: 'thorns', name: 'Espinas de rosa',
-    desc: 'El tallo echa espinas curvas que se alternan a ambos lados.',
-    d: { width: 16, speed: .4, relief: 1, light: 135, mat: 'ceramic', color: '#1f2d24', spacing: 3.2, len: 1.4 },
-    ctl: [O('mat', 'Material', matOpts), C('color', 'Color (cerámica/mate/hoja)'), R('spacing', 'Distancia entre espinas', 1.5, 8, .1), R('len', 'Largo de espina', .4, 3, .05)],
+    desc: 'El tallo echa espinas que se alternan a ambos lados: curvas como de rosa o aletas rectas.',
+    d: { width: 16, speed: .4, relief: 1, light: 135, mat: 'ceramic', color: '#1f2d24', shape: 'curve', dir: 'back', spacing: 3.2, len: 1.4, base: 1 },
+    ctl: [O('mat', 'Material', matOpts), C('color', 'Color (cerámica/mate/hoja)'), O('shape', 'Forma', [['curve', 'Curvas'], ['fin', 'Aletas']]), O('dir', 'Apuntan', [['back', 'Hacia atrás'], ['fwd', 'Hacia adelante']]), R('spacing', 'Distancia entre espinas', 1.5, 8, .1), R('len', 'Largo de espina', .4, 3, .05), R('base', 'Ancho de la base', .4, 2, .05)],
     layered: () => false, mat: P => pickMat(P.mat, P),
     seg(ctx, a, b) {
       const P = ctx.P, wb = P.width * ctx.S;
@@ -527,10 +541,21 @@ const BRUSHES = [
         if (len >= ctx.next) {
           ctx.next = len + P.spacing * wb * (.85 + .3 * ctx.rng());
           const sd = ctx.side; ctx.side = -sd;
-          let dx = -ty * sd - tx * .35, dy = tx * sd - ty * .35;
+          const fd = P.dir === 'fwd' ? 1 : -1, fin = P.shape === 'fin';
+          const sweep = fin ? .8 : .35;
+          let dx = -ty * sd + tx * sweep * fd, dy = tx * sd + ty * sweep * fd;
           const m = Math.hypot(dx, dy); dx /= m; dy /= m;
           const L = P.len * wb * (.85 + .3 * ctx.rng());
-          spike(ctx, x, y, dx, dy, L, wb * .42, -tx * .45, -ty * .45, DOME, 1.2);
+          if (fin) {
+            // A flat fin: thin spikes fanned from a base along the stem to one shared tip.
+            const tipX = x + dx * L, tipY = y + dy * L, bl = wb * .6 * P.base, rs = ctx.w(s) * .16;
+            for (let j = 0; j <= 6; j++) {
+              const o = (j / 6 - .5) * bl, bx = x + tx * o, by = y + ty * o;
+              const vx = tipX - bx, vy = tipY - by, lj = Math.hypot(vx, vy) || 1;
+              spike(ctx, bx, by, vx / lj, vy / lj, lj, rs, 0, 0, DOME, 1);
+            }
+          }
+          else spike(ctx, x, y, dx, dy, L, wb * .42 * P.base, tx * .45 * fd, ty * .45 * fd, DOME, 1.2);
         }
       });
     },
@@ -643,7 +668,8 @@ function stamp(B, cx, cy, r, peak, prof, op, amt) {
       const i = row + x;
       let sv = peak * p;
       if (rough) sv *= 1 + rough * (nz[i] - .5);
-      if (op === MAX) { const v = (base ? base[i] : 0) + sv; if (v > h[i]) h[i] = v; if (cv > cov[i]) cov[i] = cv; }
+      if (op === BODY) { if (!B.body) B.body = new Float32Array(W * H); if (p > B.body[i]) B.body[i] = p; }
+      else if (op === MAX) { const v = (base ? base[i] : 0) + sv; if (v > h[i]) h[i] = v; if (cv > cov[i]) cov[i] = cv; }
       else if (op === ADD) { h[i] += sv * amt; if (cv > cov[i]) cov[i] = cv; }
       else { const v = h[i] - sv * amt; h[i] = v > 0 ? v : 0; }
     }
@@ -676,6 +702,7 @@ function erase(B, cx, cy, r) {
     if (d >= Rr) continue;
     const i = y * W + x, e = d - r;
     const c2 = e + .5; if (c2 < 1 && cov[i] > c2) cov[i] = c2 > 0 ? c2 : 0;
+    if (B.body && c2 < 1 && B.body[i] > c2) B.body[i] = c2 > 0 ? c2 : 0;
     const lim = e > 0 ? Math.sqrt(2 * bev * e) : 0;
     if (h[i] > lim) h[i] = lim;
   }
@@ -686,11 +713,13 @@ function shade(B, x0, y0, x1, y1) {
   const { W, H, h, cov, data, S, M, noise } = B;
   const k = M.relief, [Lx, Ly, Lz] = B.L, lx2 = B.l2x, ly2 = B.l2y;
   const sd = 3.5 * S, shStr = M.shadow, kind = M.kind, c0 = M.c, live = B.live;
+  const body = M.flat && M.body > 0 ? B.body : null;
   const pal = M.pal, tone = B.tone, t1 = tone && tone[0], t2 = tone && tone[1];
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
       const i = y * W + x, j = i * 4, c = cov[i];
-      if (c <= .002 && !M.sheet) { data[j + 3] = 0; continue; }
+      const bd = body ? body[i] * M.body : 0;
+      if (c <= .002 && !M.sheet && bd <= .002) { data[j + 3] = 0; continue; }
       const hi = h[i];
       const hl = x > 0 ? h[i - 1] : hi, hr = x < W - 1 ? h[i + 1] : hi;
       const hu = y > 0 ? h[i - W] : hi, hd = y < H - 1 ? h[i + W] : hi;
@@ -751,8 +780,13 @@ function shade(B, x0, y0, x1, y1) {
         case SAND: {
           const v = hash2(x / S | 0, y / S | 0);
           if (M.flat) {
-            const c2 = M.c2, m = hash2((x / S | 0) + 17, y / S | 0) < .5;
+            const c2 = M.c2, m = hash2((x / S | 0) + 17, y / S | 0) >= M.mix;
             r = m ? c0[0] : c2[0]; g = m ? c0[1] : c2[1]; b = m ? c0[2] : c2[2];
+            if (bd > 0) {
+              const bc = M.bc, oa = c + bd * (1 - c);
+              r = (r * c + bc[0] * bd * (1 - c)) / oa; g = (g * c + bc[1] * bd * (1 - c)) / oa; b = (b * c + bc[2] * bd * (1 - c)) / oa;
+              a = oa;
+            }
             break;
           }
           const f = (.35 + .75 * diff) * dk * (.78 + .4 * v);
@@ -884,21 +918,26 @@ const FORMATS = [
   ['sq', 'Cuadrado 1:1', 1400, 1400],
   ['story', 'Historia 9:16', 900, 1600],
   ['wide', 'Panorámico 16:9', 1600, 900],
+  ['h32', 'Horizontal 3:2', 1500, 970],
+  ['banner', 'Banner 2:1', 1600, 740],
 ];
 const FONTS = {
   grotesk: { n: 'Grotesca', css: '"Inter Tight", Inter, "Helvetica Neue", Arial, sans-serif', w: 800 },
+  gsemi: { n: 'Grotesca seminegra', css: '"Inter Tight", Inter, "Helvetica Neue", Arial, sans-serif', w: 600 },
+  gmed: { n: 'Grotesca media', css: '"Inter Tight", Inter, "Helvetica Neue", Arial, sans-serif', w: 500 },
+  script: { n: 'Caligráfica', css: 'Italianno, "Snell Roundhand", cursive', w: 400 },
   condensed: { n: 'Condensada', css: 'Anton, "Arial Narrow", Impact, sans-serif', w: 400 },
   black: { n: 'Negra', css: '"Archivo Black", "Arial Black", sans-serif', w: 400 },
   serif: { n: 'Serif', css: '"Instrument Serif", Georgia, "Times New Roman", serif', w: 400 },
   mono: { n: 'Mono', css: '"Space Mono", ui-monospace, Menlo, monospace', w: 400 },
 };
-const BLENDS = [['source-over', 'Normal'], ['multiply', 'Multiplicar'], ['screen', 'Trama'], ['overlay', 'Superponer'], ['difference', 'Diferencia']];
+const BLENDS = [['source-over', 'Normal'], ['multiply', 'Multiplicar'], ['screen', 'Trama'], ['overlay', 'Superponer'], ['difference', 'Diferencia'], ['exclusion', 'Exclusión']];
 const state = {
   W: 1400, H: 1000, format: 'free', layers: [], active: null, lastP: {}, history: [],
   mx: false, my: false, eraser: false, erSize: 36, hq: false,
   image: null, imgTone: null, showImage: true, drawing: null, drag: null, nextId: 1,
-  bg: { on: true, color: '#f4f1ec' }, grain: 0,
-  imgFx: { opacity: 1, tone: false, t1: '#10263f', t2: '#ff8fb8' },
+  bg: { on: true, color: '#f4f1ec' }, grain: 0, frame: { w: 0, color: '#ebe4d6' },
+  imgFx: { opacity: 1, tone: 'none', t1: '#10263f', tm: '#e3662b', t2: '#ff8fb8', contrast: 1 },
 };
 function toast(msg, ms = 1800) {
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
@@ -920,7 +959,7 @@ function newTextObj(T) {
     T: Object.assign({
       text: 'TÍTULO', font: 'grotesk', size: Math.round(state.H * .16), color: '#16100e',
       x: Math.round(state.W * .06), y: Math.round(state.H * .08), align: 'left', lh: .9, track: -.02,
-      italic: false, upper: true, rot: 0,
+      italic: false, upper: true, rot: 0, sx: 1, fill: 'solid', fringe: '#ff6f91', fw: 0,
     }, T || {}),
   };
 }
@@ -930,16 +969,53 @@ function fontString(T, S) {
   const F = FONTS[T.font] || FONTS.grotesk;
   return `${T.italic ? 'italic ' : ''}${F.w} ${T.size * S}px ${F.css}`;
 }
-function drawText(ctx, T, S) {
+let speckTile = null;
+function speckPattern(ctx, S) {
+  if (!speckTile) {
+    speckTile = document.createElement('canvas'); speckTile.width = speckTile.height = 256;
+    const g = speckTile.getContext('2d'), im = g.createImageData(256, 256);
+    for (let i = 0; i < 256 * 256; i++) {
+      const v = hash2(i % 256 + 911, (i / 256 | 0) + 37);
+      im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = 255;
+      im.data[i * 4 + 3] = v < .34 ? 235 : 0;
+    }
+    g.putImageData(im, 0, 0);
+  }
+  const p = ctx.createPattern(speckTile, 'repeat');
+  if (S !== 1 && p.setTransform) p.setTransform(new DOMMatrix().scale(S));
+  return p;
+}
+function textRun(ctx, T, S, paint) {
   ctx.save();
-  ctx.fillStyle = T.color; ctx.textBaseline = 'top'; ctx.textAlign = T.align;
+  ctx.textBaseline = 'top'; ctx.textAlign = T.align;
   ctx.font = fontString(T, S);
   if ('letterSpacing' in ctx) ctx.letterSpacing = (T.track * T.size * S).toFixed(2) + 'px';
   ctx.translate(T.x * S, T.y * S);
   ctx.rotate((T.rot || 0) * Math.PI / 180);
+  if (T.sx && T.sx !== 1) ctx.scale(T.sx, 1);
   const lines = (T.upper ? T.text.toUpperCase() : T.text).split('\n');
-  lines.forEach((ln, i) => ctx.fillText(ln, 0, i * T.size * T.lh * S));
+  lines.forEach((ln, i) => paint(ln, i * T.size * T.lh * S));
   ctx.restore();
+}
+function drawText(ctx, T, S) {
+  if (T.fw > 0) {
+    ctx.save();
+    ctx.strokeStyle = T.fringe; ctx.lineWidth = T.fw * 2 * S; ctx.lineJoin = 'round';
+    textRun(ctx, T, S, (ln, y) => ctx.strokeText(ln, 0, y));
+    ctx.restore();
+  }
+  if (T.fill !== 'grain') {
+    ctx.fillStyle = T.color;
+    textRun(ctx, T, S, (ln, y) => { ctx.fillStyle = T.color; ctx.fillText(ln, 0, y); });
+    return;
+  }
+  // Grainy fill: letters in their colour, then white specks kept inside the letters.
+  const c = document.createElement('canvas'); c.width = ctx.canvas.width; c.height = ctx.canvas.height;
+  const x = c.getContext('2d');
+  textRun(x, T, S, (ln, y) => { x.fillStyle = T.color; x.fillText(ln, 0, y); });
+  x.globalCompositeOperation = 'source-atop';
+  x.fillStyle = speckPattern(x, S); x.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(c, 0, 0);
 }
 const fontTried = new Set();
 function renderTextLayer(L) {
@@ -1015,32 +1091,51 @@ function fit() {
 let grainTile = null;
 function grainPattern(ctx) {
   if (!grainTile) {
-    grainTile = document.createElement('canvas'); grainTile.width = grainTile.height = 256;
-    const g = grainTile.getContext('2d'), im = g.createImageData(256, 256);
-    for (let i = 0; i < 256 * 256; i++) {
-      const v = (hash2(i % 256, i / 256 | 0) * .7 + Math.random() * .3) * 255;
+    // Print texture: fine grain, soft mottling and scattered dust specks (tileable mottling via wrapped noise).
+    const N = 512;
+    grainTile = document.createElement('canvas'); grainTile.width = grainTile.height = N;
+    const g = grainTile.getContext('2d'), im = g.createImageData(N, N);
+    const wrap = (x, y, f) => {
+      const u = x / N, v = y / N, a = vnoise(x / f, y / f), b = vnoise((x - N) / f, y / f), c = vnoise(x / f, (y - N) / f), d = vnoise((x - N) / f, (y - N) / f);
+      return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+    };
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const i = y * N + x;
+      let v = 128 + (hash2(x, y) - .5) * 130 + (wrap(x, y, 48) - .5) * 55 + (wrap(x + 99, y + 7, 9) - .5) * 40;
+      const sp = hash2(x + 3001, y + 17);
+      if (sp > .9985) v = 255; else if (sp < .0008) v = 20;
       im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255;
     }
     g.putImageData(im, 0, 0);
   }
   return ctx.createPattern(grainTile, 'repeat');
 }
+// The photo, cropped to cover the poster, with its colour treatment (gradient map) applied.
 function imageSource() {
-  const fx = state.imgFx;
-  if (!fx.tone) return state.image;
-  if (!state.imgTone) {
-    const c = newCanvas(), g = c.getContext('2d');
-    g.drawImage(state.image, 0, 0, c.width, c.height);
+  if (state.imgTone) return state.imgTone;
+  const fx = state.imgFx, img = state.image;
+  const c = newCanvas(), g = c.getContext('2d');
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const sc = Math.max(c.width / iw, c.height / ih), dw = iw * sc, dh = ih * sc;
+  g.drawImage(img, (c.width - dw) / 2, (c.height - dh) / 2, dw, dh);
+  if (fx.tone !== 'none' || fx.contrast !== 1) {
     const im = g.getImageData(0, 0, c.width, c.height), d = im.data;
-    const a = hex(fx.t1), b = hex(fx.t2);
+    const a = hex(fx.t1), m = hex(fx.tm), b = hex(fx.t2), k = fx.contrast;
     for (let i = 0; i < d.length; i += 4) {
-      const l = (.3 * d[i] + .59 * d[i + 1] + .11 * d[i + 2]) / 255;
-      d[i] = (a[0] + (b[0] - a[0]) * l) * 255; d[i + 1] = (a[1] + (b[1] - a[1]) * l) * 255; d[i + 2] = (a[2] + (b[2] - a[2]) * l) * 255;
+      if (fx.tone === 'none') {
+        for (let ch = 0; ch < 3; ch++) d[i + ch] = ((d[i + ch] / 255 - .5) * k + .5) * 255;
+        continue;
+      }
+      let l = (.3 * d[i] + .59 * d[i + 1] + .11 * d[i + 2]) / 255;
+      l = clamp((l - .5) * k + .5, 0, 1);
+      let p0 = a, p1 = b, u = l;
+      if (fx.tone === 'tri') { if (l < .5) { p1 = m; u = l * 2; } else { p0 = m; u = l * 2 - 1; } }
+      d[i] = (p0[0] + (p1[0] - p0[0]) * u) * 255; d[i + 1] = (p0[1] + (p1[1] - p0[1]) * u) * 255; d[i + 2] = (p0[2] + (p1[2] - p0[2]) * u) * 255;
     }
     g.putImageData(im, 0, 0);
-    state.imgTone = c;
   }
-  return state.imgTone;
+  state.imgTone = c;
+  return c;
 }
 // Paints the whole poster (full) or only the layers (transparent export) at scale S.
 function paintScene(ctx, S, getCanvas, full) {
@@ -1066,6 +1161,11 @@ function paintScene(ctx, S, getCanvas, full) {
     ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = state.grain;
     ctx.fillStyle = pat; ctx.fillRect(0, 0, Ws, Hs);
     ctx.restore();
+  }
+  if (full && state.frame.w > 0) {
+    const f = state.frame.w * S;
+    ctx.fillStyle = state.frame.color;
+    ctx.fillRect(0, 0, Ws, f); ctx.fillRect(0, Hs - f, Ws, f); ctx.fillRect(0, 0, f, Hs); ctx.fillRect(Ws - f, 0, f, Hs);
   }
 }
 function compose() {
@@ -1269,9 +1369,13 @@ const TEXT_CTL = [
   O('align', 'Alineación', [['left', 'Izquierda'], ['center', 'Centro'], ['right', 'Derecha']]),
   O('italic', 'Estilo', [[false, 'Normal'], [true, 'Cursiva']]),
   O('upper', 'Mayúsculas', [[true, 'Sí'], [false, 'No']]),
+  R('sx', 'Ancho de letra', .4, 1.6, .01),
   R('lh', 'Interlineado', .6, 2, .01),
   R('track', 'Espaciado', -.1, .4, .005),
   O('rot', 'Rotación', [[0, '0°'], [90, '90°'], [-90, '−90°']]),
+  O('fill', 'Relleno', [['solid', 'Liso'], ['grain', 'Granulado']]),
+  R('fw', 'Borde de color', 0, 12, .5, ' px'),
+  C('fringe', 'Color del borde'),
 ];
 function renderPanel() {
   const panel = $('#panel'), L = state.active;
@@ -1315,14 +1419,24 @@ function renderPoster() {
   fw.appendChild(sel); box.appendChild(fw);
   box.appendChild(control(O('bg', 'Fondo', [[true, 'Color'], [false, 'Transparente']]), () => state.bg.on, v => { state.bg.on = v; compose(); }));
   box.appendChild(control(C('bgc', 'Color de fondo'), () => state.bg.color, v => { state.bg.color = v; compose(); }));
-  box.appendChild(control(R('grain', 'Grano de impresión', 0, 1, .01), () => state.grain, v => { state.grain = v; compose(); }));
+  box.appendChild(control(R('grain', 'Textura de impresión', 0, 1, .01), () => state.grain, v => { state.grain = v; compose(); }));
+  box.appendChild(control(R('frame', 'Marco', 0, 120, 1, ' px'), () => state.frame.w, v => { state.frame.w = v; compose(); }));
+  box.appendChild(control(C('framec', 'Color del marco'), () => state.frame.color, v => { state.frame.color = v; compose(); }));
   if (!state.image) return;
-  box.appendChild(control(R('io', 'Opacidad de la imagen', 0, 1, .01), () => state.imgFx.opacity, v => { state.imgFx.opacity = v; compose(); }));
-  box.appendChild(control(O('it', 'Duotono de la imagen', [[false, 'No'], [true, 'Sí']]), () => state.imgFx.tone, v => { state.imgFx.tone = v; state.imgTone = null; compose(); }));
-  box.appendChild(control(C('it1', 'Imagen: sombras'), () => state.imgFx.t1, v => { state.imgFx.t1 = v; state.imgTone = null; compose(); }));
-  box.appendChild(control(C('it2', 'Imagen: luces'), () => state.imgFx.t2, v => { state.imgFx.t2 = v; state.imgTone = null; compose(); }));
+  const fx = state.imgFx, redo = () => { state.imgTone = null; compose(); };
+  if (state.placeholder) {
+    const n = document.createElement('p'); n.className = 'bdesc';
+    n.textContent = 'La foto es un relleno de ejemplo. Usa "Subir imagen" para poner la tuya: conserva el formato y el tratamiento de color.';
+    box.appendChild(n);
+  }
+  box.appendChild(control(R('io', 'Opacidad de la imagen', 0, 1, .01), () => fx.opacity, v => { fx.opacity = v; compose(); }));
+  box.appendChild(control(O('it', 'Color de la imagen', [['none', 'Original'], ['duo', 'Duotono'], ['tri', 'Tres tonos']]), () => fx.tone, v => { fx.tone = v; redo(); }));
+  box.appendChild(control(R('ic', 'Contraste', .5, 2.5, .05), () => fx.contrast, v => { fx.contrast = v; redo(); }));
+  box.appendChild(control(C('it1', 'Imagen: sombras'), () => fx.t1, v => { fx.t1 = v; redo(); }));
+  box.appendChild(control(C('itm', 'Imagen: medios (tres tonos)'), () => fx.tm, v => { fx.tm = v; redo(); }));
+  box.appendChild(control(C('it2', 'Imagen: luces'), () => fx.t2, v => { fx.t2 = v; redo(); }));
   const rm = document.createElement('button'); rm.className = 'btn full'; rm.textContent = 'Quitar imagen';
-  rm.onclick = () => { state.image = null; state.imgTone = null; $('#toggleImg').disabled = true; renderPoster(); compose(); };
+  rm.onclick = () => { state.image = null; state.imgTone = null; state.placeholder = false; $('#toggleImg').disabled = true; renderPoster(); compose(); };
   box.appendChild(rm);
 }
 
@@ -1413,13 +1527,17 @@ $('#file').onchange = e => {
   const f = e.target.files[0]; if (!f) return;
   const img = new Image();
   img.onload = () => {
-    const sc = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
-    const nW = Math.max(64, Math.round(img.naturalWidth * sc)), nH = Math.max(64, Math.round(img.naturalHeight * sc));
-    state.image = img; state.imgTone = null; state.showImage = true; state.format = 'image';
-    setDoc(nW, nH);
+    // An empty poster takes the photo's proportions; otherwise the photo fills the current format.
+    const adopt = !state.layers.some(hasContent) && !state.image;
+    state.image = img; state.imgTone = null; state.showImage = true; state.placeholder = false;
+    if (adopt) {
+      const sc = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+      state.format = 'image';
+      setDoc(Math.max(64, Math.round(img.naturalWidth * sc)), Math.max(64, Math.round(img.naturalHeight * sc)));
+    } else compose();
     $('#toggleImg').disabled = false; $('#toggleImg').textContent = 'Ocultar imagen';
     renderPoster();
-    toast('Imagen cargada: el póster toma su tamaño');
+    toast(adopt ? 'Imagen cargada: el póster toma su tamaño' : 'Imagen cargada: rellena el formato actual');
   };
   img.src = URL.createObjectURL(f);
   e.target.value = '';
@@ -1491,25 +1609,100 @@ function path(n, f, sf) {
   return pts;
 }
 const tx = (text, T) => Object.assign({ type: 'text', text }, T);
+// Smooth curve (Catmull-Rom) through control points given in a reference size rw×rh, scaled to the poster.
+function spline(ctrl, rw, rh, W, H, sf) {
+  const P = ctrl.map(([x, y]) => [x * W / rw, y * H / rh]);
+  const pts = [];
+  for (let i = 0; i < P.length - 1; i++) {
+    const p0 = P[Math.max(0, i - 1)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(P.length - 1, i + 2)];
+    const n = Math.max(2, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / 3));
+    for (let k = 0; k < n; k++) {
+      const t = k / n, t2 = t * t, t3 = t2 * t;
+      const f = (a, b, c, d) => .5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      pts.push({ x: f(p0[0], p1[0], p2[0], p3[0]), y: f(p0[1], p1[1], p2[1], p3[1]), s: .3 });
+    }
+  }
+  const last = P[P.length - 1]; pts.push({ x: last[0], y: last[1], s: .3 });
+  if (sf) pts.forEach((p, i) => p.s = sf(i / (pts.length - 1)));
+  return pts;
+}
+// Procedural stand-in photo (foliage-like) so the example works before the user uploads their own.
+function samplePhoto(W, H) {
+  const w = W, h = H;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'), im = g.createImageData(w, h), d = im.data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const q = vnoise(x / 160, y / 160) * 3;
+    let l = vnoise(x / 90 + q, y / 90 - q) * .62 + vnoise(x / 22 + q * 2, y / 22) * .28 + vnoise(x / 7, y / 7) * .1;
+    l = clamp((l - .5) * 2.2 + .5, 0, 1);
+    const i = (y * w + x) * 4; d[i] = d[i + 1] = d[i + 2] = l * 255; d[i + 3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+  return c;
+}
 const POSTERS = [
-  { name: 'Espinas sobre tipografía', poster: { format: 'wide', bg: '#a3401c', grain: .45 }, make: (W, H) => [
-    tx('BODEGÓN', { size: 250, color: '#9db3e8', x: 34, y: 150, lh: .82, track: -.03 }),
-    tx('PINCELES', { size: 250, color: '#9db3e8', x: W - 34, y: 395, align: 'right', track: -.03 }),
-    tx('DE MATERIA', { size: 210, color: '#9db3e8', x: 34, y: 650, track: -.03 }),
-    tx('(2026)', { font: 'serif', italic: true, upper: false, size: 150, color: '#9db3e8', x: W - 40, y: 120, align: 'right', track: -.02 }),
-    tx('01/', { font: 'serif', italic: true, size: 120, color: '#9db3e8', x: 40, y: 410, track: -.02 }),
-    tx('QUINCE PINCELES\nQUE CONVIERTEN\nEL TRAZO\nEN MATERIA', { size: 20, color: '#f0e2d4', x: W * .62, y: 28, lh: 1.05, track: 0 }),
-    { brush: 'thorns', P: { mat: 'matte', color: '#9db3e8', width: 17, len: 1.7, spacing: 3.4, relief: .8 }, fx: { opacity: .96 },
-      strokes: [{ pts: path(900, u => [W / 2 + W * .44 * Math.sin(u * Math.PI * 3 + .4), H / 2 + H * .42 * Math.sin(u * Math.PI * 4 + 1.1)], u => .3 + .3 * Math.sin(u * 17)) }] },
-  ] },
-  { name: 'Caligrafía de arena', poster: { format: 'free', bg: '#e2600e', grain: .3 }, make: (W, H) => [
-    { brush: 'sand', P: { style: 'flat', color: '#f6eee6', color2: '#f3d3bd', width: 110, density: .55, grainSize: .9, speed: .6 },
-      strokes: [{ mirror: { x: 1, y: 1 }, pts: path(700, u => [W * (.06 + .42 * u) + 70 * Math.cos(u * 24), H * (.5 - .38 * Math.abs(Math.sin(u * Math.PI * 1.3))) + 70 * Math.sin(u * 24)], u => .45 + .35 * Math.sin(u * 13)) }] },
-    tx('Materia.', { font: 'serif', italic: true, upper: false, size: 380, color: '#93b8ee', x: W / 2, y: H * .26, align: 'center', track: -.03 }),
-    tx('LA ARENA SE AGRUPA\nCUANDO VAS DESPACIO\nY SE DISPERSA\nCUANDO VAS RÁPIDO', { size: 24, color: '#3b1605', x: 180, y: 26, lh: 1.02, track: 0 }),
-    tx('BODEGÓN\nESTUDIO', { size: 24, color: '#3b1605', x: W - 40, y: 26, align: 'right', lh: 1.02, track: 0 }),
-    tx('PINCEL 09\nPOLVO PLANO', { size: 24, color: '#3b1605', x: 180, y: H - 80, lh: 1.02, track: 0 }),
-  ] },
+  { name: 'Espinas sobre tipografía', poster: { format: 'banner', bg: '#9e421e', grain: .7 }, make: (W, H) => {
+    const k = W / 1800, blue = '#93a6dc';
+    const sp = (c, sf) => spline(c, 1800, 832, W, H, sf);
+    return [
+      tx('CINÉTICO', { font: 'gsemi', size: 240 * k, color: blue, x: 14 * k, y: 124 * k, track: -.055 }),
+      tx('DISEÑO', { font: 'gsemi', size: 240 * k, color: blue, x: 1796 * k, y: 348 * k, align: 'right', track: -.055 }),
+      tx('PINCELES', { font: 'gsemi', size: 240 * k, color: blue, x: 14 * k, y: 574 * k, track: -.055 }),
+      tx('(2026)', { font: 'serif', italic: true, upper: false, size: 150 * k, color: blue, x: 1772 * k, y: 190 * k, align: 'right', track: -.02 }),
+      tx('01/', { font: 'serif', italic: true, upper: false, size: 150 * k, color: blue, x: 22 * k, y: 395 * k, track: -.02 }),
+      tx('(™)', { font: 'serif', upper: false, size: 150 * k, color: blue, x: 1355 * k, y: 585 * k, align: 'center', track: 0 }),
+      tx('QUINCE\nPINCELES\nQUE CONVIERTEN\nEL TRAZO\nDEL CURSOR\nEN\nMATERIA', { font: 'gmed', size: 21 * k, color: '#b8c5ee', x: 1168 * k, y: 8 * k, lh: 1.14, track: -.02 }),
+      { brush: 'thorns', P: { mat: 'matte', color: '#4fd8d0', width: 34, speed: .25, relief: .45, light: 120, shape: 'fin', dir: 'back', len: 1.75, spacing: 2.5, base: 1.35 },
+        fx: { blend: 'exclusion' },
+        strokes: [
+          { pts: sp([[1420, 30], [1300, 110], [1120, 210], [930, 300], [760, 370], [560, 470], [400, 560], [250, 680], [110, 800]]) },
+          { pts: sp([[470, 560], [470, 420], [380, 250], [260, 80], [110, 20], [30, 110], [40, 260], [120, 380], [260, 420], [360, 330], [370, 220]]) },
+          { pts: sp([[980, 270], [1200, 290], [1400, 380], [1480, 540], [1420, 700], [1230, 810], [1000, 820], [850, 740], [820, 580], [900, 430], [1080, 330], [1320, 330]]) },
+        ] },
+    ];
+  } },
+  { name: 'Caligrafía de arena', poster: { format: 'h32', bg: '#e1600d', grain: .35 }, make: (W, H) => {
+    const k = W / 1400, ink = '#5b3522';
+    const sp = c => spline(c, 1400, 905, W, H);
+    return [
+      { brush: 'sand', P: { style: 'flat', dist: 'even', color: '#f6efe8', color2: '#f5c9ae', mix: .3, width: 74, speed: .15, density: .7, grainSize: .8 },
+        strokes: [
+          { mirror: { x: 1, y: 1 }, pts: sp([[700, 150], [600, 95], [470, 80], [370, 130], [300, 60], [180, 40], [85, 80], [55, 210], [95, 330], [70, 452]]) },
+          { mirror: { x: 1, y: 1 }, pts: sp([[150, 70], [240, 90], [250, 170], [180, 200], [140, 150], [185, 115]]) },
+          { mirror: { x: 1, y: 1 }, pts: sp([[300, 452], [330, 360], [430, 300], [540, 310], [590, 390], [530, 440], [460, 400]]) },
+          { mirror: { x: 1, y: 1 }, pts: sp([[700, 260], [640, 250], [600, 200], [640, 160], [700, 170]]) },
+        ] },
+      tx('Bodegon.UY', { font: 'script', upper: false, size: 690 * k, sx: .6, color: '#86b1e4', x: 700 * k, y: 36 * k, align: 'center', track: 0, fill: 'grain', fw: 2.5, fringe: '#ff7a9a' }),
+      tx('EL TIEMPO SE ESCAPA\nCOMO ARENA DEL DESIERTO', { font: 'gmed', size: 29 * k, color: ink, x: 242 * k, y: 2 * k, lh: 1.02, track: -.035 }),
+      tx('GRANOS SOBRE LA PIEL\nCOMO AGUJAS: NADA LOS DETIENE', { font: 'gmed', size: 29 * k, color: ink, x: 355 * k, y: 61 * k, lh: 1.02, track: -.035 }),
+      tx('LAS NOCHES, TAN FRÍAS\nY NOSOTROS SOLOS', { font: 'gmed', size: 29 * k, color: ink, x: 242 * k, y: 120 * k, lh: 1.02, track: -.035 }),
+      tx('ATRAPADOS EN LA RED DEL TIEMPO\nEN SU INMENSIDAD', { font: 'gmed', size: 29 * k, color: ink, x: 355 * k, y: 179 * k, lh: 1.02, track: -.035 }),
+      tx('GROTESCO', { font: 'gmed', size: 29 * k, color: ink, x: 1130 * k, y: 2 * k, align: 'right', track: -.035 }),
+      tx('HORA\nQUIETA', { font: 'gmed', size: 29 * k, color: ink, x: 1130 * k, y: 178 * k, align: 'right', lh: 1.02, track: -.035 }),
+      tx('PISTA\n3 ON', { font: 'gmed', size: 29 * k, color: ink, x: 242 * k, y: 758 * k, lh: 1.02, track: -.035 }),
+      tx('ORIGEN\nPARADOJA', { font: 'gmed', size: 29 * k, color: ink, x: 242 * k, y: 846 * k, lh: 1.02, track: -.035 }),
+      tx('¿SOMOS PARTE DE LA CREACIÓN\nDE UN DIOS VIEJO Y OLVIDADIZO?\n¿O UN AZAR? ¿UN ACCIDENTE?', { font: 'gmed', size: 29 * k, color: ink, x: 678 * k, y: 758 * k, lh: 1.02, track: -.035 }),
+      tx('¡GROTESCO!', { font: 'gmed', size: 29 * k, color: ink, x: 678 * k, y: 874 * k, track: -.035 }),
+    ];
+  } },
+  { name: 'Foto con arena (home.)', poster: { format: 'sq', bg: '#e36a2c', grain: .35, frame: 18, photo: { tone: 'tri', t1: '#221a44', tm: '#e5652a', t2: '#9da2f7', contrast: 1.5 } }, make: (W, H) => {
+    const k = W / 1100;
+    const sp = c => spline(c, 1100, 1100, W, H);
+    const P = { style: 'flat', dist: 'edges', color: '#f7a51c', color2: '#1d1b3c', mix: .4, width: 120, speed: .2, density: .38, grainSize: .9, body: .9, bodyColor: '#e5692d' };
+    return [
+      { brush: 'sand', P, strokes: [
+        { pts: sp([[20, 520], [300, 505], [620, 470], [900, 430], [1090, 400]]) },
+        { pts: sp([[440, 300], [700, 270], [900, 250], [1090, 240]]) },
+        { pts: sp([[30, 480], [220, 600], [420, 700], [640, 830]]) },
+        { pts: sp([[400, 110], [300, 300], [200, 500], [120, 700], [60, 850]]) },
+        { pts: sp([[180, 450], [230, 650], [250, 850], [240, 1040]]) },
+        { pts: sp([[720, 40], [820, 300], [900, 560], [980, 820], [1060, 1080]]) },
+        { pts: sp([[1080, 130], [960, 420], [840, 700], [700, 1060]]) },
+        { pts: sp([[560, 870], [760, 920], [960, 960], [1090, 990]]) },
+      ] },
+      tx('casa.', { font: 'gmed', upper: false, size: 52 * k, color: '#f3eee6', x: 548 * k, y: 520 * k, align: 'center', track: -.03 }),
+    ];
+  } },
   { name: 'Alambre oxidado', poster: { format: 'sq', bg: '#1d130b', grain: .35 }, make: (W, H, m) => [
     { brush: 'paste', P: { mode: 'merged', color: '#b9d6ef', width: 150, relief: .7 }, strokes: [0, 1, 2].map(k => ({ pts: path(300, u => { const t = u * Math.PI * 4 + k * 2.1, r = m * (.09 + .06 * Math.sin(u * 9 + k)); return [W * (.28 + .23 * k) + Math.cos(t) * r, H * (.3 + .2 * k) + Math.sin(t) * r * 1.3]; }, u => .2 + .5 * u) })) },
     { brush: 'stone', P: { color: '#9a9ca3', width: 70, grain: .9, rough: 1.2 }, strokes: [0, 1, 2, 3].map(k => ({ pts: path(160, u => { const t = u * Math.PI * 2.4 + k; return [W * (.2 + .2 * k) + Math.cos(t) * m * .07, H * (.22 + .17 * k) + Math.sin(t * 1.3) * m * .08]; }) })) },
@@ -1544,6 +1737,13 @@ function applyTemplate(t) {
     const f = FORMATS.find(x => x[0] === t.poster.format);
     state.W = f[2]; state.H = f[3]; state.format = f[0]; state.imgTone = null;
     state.bg = { on: true, color: t.poster.bg }; state.grain = t.poster.grain;
+    state.frame.w = t.poster.frame || 0;
+    const ph = t.poster.photo;
+    if (ph) {
+      state.image = samplePhoto(state.W, state.H); state.placeholder = true; state.showImage = true;
+      Object.assign(state.imgFx, { opacity: 1 }, ph);
+      $('#toggleImg').disabled = false; $('#toggleImg').textContent = 'Ocultar imagen';
+    } else if (state.placeholder) { state.image = null; state.placeholder = false; $('#toggleImg').disabled = true; }
   }
   const W = state.W, H = state.H, m = Math.min(W, H);
   state.layers = []; state.active = null; state.history = [];
@@ -1552,6 +1752,7 @@ function applyTemplate(t) {
     let L;
     if (spec.type === 'text') {
       const T = Object.assign({}, spec); delete T.type;
+      for (const key of ['size', 'x', 'y']) T[key] = Math.round(T[key]);
       L = newTextObj(T);
     } else {
       L = newLayerObj(spec.brush, Object.assign({}, BR[spec.brush].d, spec.P));
